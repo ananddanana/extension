@@ -1,0 +1,102 @@
+from burp import IBurpExtender
+from burp import IContextMenuFactory
+from javax.swing import JMenuItem, JPanel, JLabel, JTextField, JOptionPane
+import java.awt as awt
+
+class BurpExtender(IBurpExtender, IContextMenuFactory):
+    
+    def registerExtenderCallbacks(self, callbacks):
+        self._callbacks = callbacks
+        self._helpers = callbacks.getHelpers()
+        
+        callbacks.setExtensionName("Multi-Attack Repeater Multiplier")
+        callbacks.registerContextMenuFactory(self)
+        print "Multi-Attack Repeater Multiplier loaded successfully."
+
+    def createMenuItems(self, invocation):
+        self.context = invocation
+        if invocation.getSelectedMessages():
+            menu_list = []
+            menu_item = JMenuItem("Send to Repeater N Times...", actionPerformed=self.handle_menu_click)
+            menu_list.append(menu_item)
+            return menu_list
+        return None
+
+    def handle_menu_click(self, event):
+        selected_messages = self.context.getSelectedMessages()
+        if not selected_messages:
+            return
+            
+        message_info = selected_messages[0]
+        http_service = message_info.getHttpService()
+        request = message_info.getRequest()
+
+        # Build a larger grid UI: 5 rows, 2 columns
+        panel = JPanel(awt.GridLayout(5, 2, 5, 5))
+        
+        # 4 Attack Name Fields
+        name_field_1 = JTextField("XSS")
+        name_field_2 = JTextField("SQLi")
+        name_field_3 = JTextField("CSRF")
+        name_field_4 = JTextField("")  # Left blank by default
+        
+        # 1 Count Field (applies to all active attack types)
+        count_field = JTextField("3")
+
+        # Add components to the panel
+        panel.add(JLabel("Attack 1 Base Name:"))
+        panel.add(name_field_1)
+        
+        panel.add(JLabel("Attack 2 Base Name:"))
+        panel.add(name_field_2)
+        
+        panel.add(JLabel("Attack 3 Base Name:"))
+        panel.add(name_field_3)
+        
+        panel.add(JLabel("Attack 4 Base Name:"))
+        panel.add(name_field_4)
+        
+        panel.add(JLabel("Number of Tabs per Attack:"))
+        panel.add(count_field)
+
+        # Show the pop-up modal
+        result = JOptionPane.showConfirmDialog(
+            None, 
+            panel, 
+            "Multi-Attack Configuration", 
+            JOptionPane.OK_CANCEL_OPTION, 
+            JOptionPane.PLAIN_MESSAGE
+        )
+
+        if result == JOptionPane.OK_OPTION:
+            try:
+                count = int(count_field.getText().strip())
+                
+                # Gather all inputs into a list
+                base_names = [
+                    name_field_1.getText().strip(),
+                    name_field_2.getText().strip(),
+                    name_field_3.getText().strip(),
+                    name_field_4.getText().strip()
+                ]
+
+                # Loop through each base name provided
+                for base_name in base_names:
+                    # If the field was left empty, skip it cleanly
+                    if not base_name:
+                        continue
+                        
+                    # Generate N tabs for this specific attack base name
+                    for i in range(1, count + 1):
+                        custom_tab_name = "{}-{}".format(base_name, i)
+                        
+                        self._callbacks.sendToRepeater(
+                            http_service.getHost(),
+                            http_service.getPort(),
+                            1 if http_service.getProtocol() == "https" else 0,
+                            request,
+                            custom_tab_name
+                        )
+
+            except ValueError:
+                JOptionPane.showMessageDialog(None, "Please enter a valid number for the tab count.", "Error", JOptionPane.ERROR_MESSAGE)
